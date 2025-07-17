@@ -102,16 +102,22 @@ def main():
 
     if st.button("Predict Potability"):
         inp = np.array([user_vals], dtype=float)
-        # impute
-        inds_nan = np.isnan(inp)
-        inp[inds_nan] = medians[inds_nan[1]]
+
+        # impute missing values by column median
+        mask = np.isnan(inp)
+        cols = np.where(mask)[1]               # get column indices of NaNs
+        inp[mask] = medians[cols]              # fill NaNs with corresponding medians
+
         # log1p on skewed
         inp[:, skew_idx] = np.log1p(inp[:, skew_idx])
+
         # scale
         inp_scaled = (inp - means) / stds
+
         proba = model.predict_proba(inp_scaled)[0]
         verdict = "SAFE 💚" if proba >= 0.5 else "UNSAFE 🚩"
         st.markdown(f"## **{verdict}**  (Prob: {proba:.1%})")
+
         # show “importances” (absolute weights)
         st.subheader("Feature Importances (|weights|)")
         imps = np.abs(model.weights)
