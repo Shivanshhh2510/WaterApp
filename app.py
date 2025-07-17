@@ -91,12 +91,21 @@ def main():
     maxs    = np.nanmax(X, axis=0)
     defaults= medians
 
+    # —— Build inputs with whole-number step size ——
     user_vals = []
     for i, f in enumerate(feats):
+        min_val = float(mins[i])
+        max_val = float(maxs[i])
+        default = float(defaults[i])
+        step_size = 1.0
+
         val = st.number_input(
-            f.replace('_',' ').title(),
-            float(mins[i]), float(maxs[i]), float(defaults[i]),
-            step=(maxs[i]-mins[i])/100
+            label=f.replace('_',' ').title(),
+            min_value=min_val,
+            max_value=max_val,
+            value=default,
+            step=step_size,
+            format="%.2f"
         )
         user_vals.append(val)
 
