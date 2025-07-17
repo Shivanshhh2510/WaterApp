@@ -1,6 +1,11 @@
 import streamlit as st
 import csv
 import numpy as np
+import pandas as pd
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from imblearn.over_sampling import SMOTE
 
 # —— 1) Basic logistic regression in NumPy ——
 class LogisticRegressionND:
@@ -30,107 +35,92 @@ class LogisticRegressionND:
     def predict(self, X):
         return (self.predict_proba(X) >= 0.5).astype(int)
 
-# —— 2) Load CSV into NumPy arrays ——  
+# —— 2) Load data into DataFrame & NumPy ——
 @st.cache_data(show_spinner=False)
 def load_data():
-    with open('water_potability.csv', newline='') as f:
-        reader = csv.DictReader(f)
-        feats = reader.fieldnames[:-1]
-        rows = list(reader)
-    X = np.array([[float(r[f]) if r[f] != '' else np.nan for f in feats]
-                  for r in rows])
-    y = np.array([int(r['Potability']) for r in rows])
-    return X, y, feats
+    df = pd.read_csv('water_potability.csv')
+    X = df.drop('Potability', axis=1).values
+    y = df['Potability'].values
+    feats = list(df.columns.drop('Potability'))
+    return df, X, y, feats
 
-# —— 3) Train-model (impute, scale, oversample, fit) ——  
+# —— 3) Train-model (impute, scale, oversample, fit) ——
 @st.cache_resource(show_spinner=False)
 def train_model(X, y):
-    # a) Impute missing values with median
-    medians = np.nanmedian(X, axis=0)
-    inds_nan = np.where(np.isnan(X))
-    X[inds_nan] = np.take(medians, inds_nan[1])
-
-    # b) Log-transform skewed cols by index 
-    #    (Solids idx=2, Sulfate=4, Trihalomethanes=7)
+    # a) Impute missing with median
+    imp = SimpleImputer(strategy='median')
+    X_imp = imp.fit_transform(X)
+    # b) Log-transform skewed cols (Solids=2, Sulfate=4, Trihalomethanes=7)
     skew_idx = [2, 4, 7]
-    X[:, skew_idx] = np.log1p(X[:, skew_idx])
-
-    # c) Scale features
-    means = X.mean(axis=0)
-    stds  = X.std(axis=0)
-    X_scaled = (X - means) / stds
-
-    # d) Simple oversampling of minority class
-    idx0 = np.where(y == 0)[0]
-    idx1 = np.where(y == 1)[0]
-    if len(idx1) < len(idx0):
-        extra = np.random.choice(idx1, size=len(idx0)-len(idx1), replace=True)
-        X_bal = np.vstack([X_scaled, X_scaled[extra]])
-        y_bal = np.concatenate([y, y[extra]])
-    else:
-        extra = np.random.choice(idx0, size=len(idx1)-len(idx0), replace=True)
-        X_bal = np.vstack([X_scaled, X_scaled[extra]])
-        y_bal = np.concatenate([y, y[extra]])
-
-    # e) Fit logistic regression
+    X_imp[:, skew_idx] = np.log1p(X_imp[:, skew_idx])
+    # c) Scale
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_imp)
+    # d) SMOTE
+    sm = SMOTE(random_state=42)
+    X_bal, y_bal = sm.fit_resample(X_scaled, y)
+    # e) Train logistic regression
     model = LogisticRegressionND(lr=0.1, n_iters=1000)
     model.fit(X_bal, y_bal)
+    # f) Compute safe ranges (5th-95th percentiles)
+    return imp, scaler, skew_idx, model
 
-    return medians, means, stds, skew_idx, model
-
-# —— 4) App UI & inference ——  
+# —— 4) Main app ——
 def main():
-    st.set_page_config(page_title="💧 Water Potability Predictor", layout="centered")
+    st.set_page_config(page_title="💧 Water Potability Predictor", layout="wide")
     st.title("💧 Water Potability Predictor")
 
-    X, y, feats = load_data()
-    medians, means, stds, skew_idx, model = train_model(X.copy(), y)
+    # Load data & model
+    df, X, y, feats = load_data()
+    imp, scaler, skew_idx, model = train_model(X, y)
 
-    # slider ranges
-    mins    = np.nanmin(X, axis=0)
-    maxs    = np.nanmax(X, axis=0)
-    defaults= medians
+    # Compute slider ranges & safe ranges
+    mins = df[feats].min()
+    maxs = df[feats].max()
+    meds = df[feats].median()
+    safe5, safe95 = df[df['Potability']==1][feats].quantile(0.05), df[df['Potability']==1][feats].quantile(0.95)
 
-    # —— Build inputs with whole-number step size ——
-    user_vals = []
-    for i, f in enumerate(feats):
-        min_val = float(mins[i])
-        max_val = float(maxs[i])
-        default = float(defaults[i])
-        step_size = 1.0
-
-        val = st.number_input(
+    # Sidebar inputs
+    st.sidebar.header("Input Water-Quality Metrics")
+    user_vals = {}
+    for f in feats:
+        user_vals[f] = st.sidebar.slider(
             label=f.replace('_',' ').title(),
-            min_value=min_val,
-            max_value=max_val,
-            value=default,
-            step=step_size,
-            format="%.2f"
+            min_value=float(mins[f]),
+            max_value=float(maxs[f]),
+            value=float(meds[f]),
+            step=1.0,
+            format="%.2f",
+            help=f"Typical safe range: {safe5[f]:.2f} to {safe95[f]:.2f}"
         )
-        user_vals.append(val)
-
-    if st.button("Predict Potability"):
-        inp = np.array([user_vals], dtype=float)
-
-        # impute missing values by column median
-        mask = np.isnan(inp)
-        cols = np.where(mask)[1]               # get column indices of NaNs
-        inp[mask] = medians[cols]              # fill NaNs with corresponding medians
-
-        # log1p on skewed
-        inp[:, skew_idx] = np.log1p(inp[:, skew_idx])
-
-        # scale
-        inp_scaled = (inp - means) / stds
-
-        proba = model.predict_proba(inp_scaled)[0]
-        verdict = "SAFE 💚" if proba >= 0.5 else "UNSAFE 🚩"
-        st.markdown(f"## **{verdict}**  (Prob: {proba:.1%})")
-
-        # show “importances” (absolute weights)
-        st.subheader("Feature Importances (|weights|)")
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Predict Potability"):
+        # Prepare input
+        inp = np.array([[user_vals[f] for f in feats]])
+        # Impute, transform, scale
+        inp_imp = imp.transform(inp)
+        inp_imp[:, skew_idx] = np.log1p(inp_imp[:, skew_idx])
+        inp_scaled = scaler.transform(inp_imp)
+        # Predict
+        prob = model.predict_proba(inp_scaled)[0]
+        verdict = "SAFE 💚" if prob >= 0.5 else "UNSAFE 🚩"
+        # Metrics
+        st.metric(label="Prediction", value=verdict, delta=f"{prob:.1%} safe chance")
+        # Feature importances
         imps = np.abs(model.weights)
-        st.bar_chart({feats[i]: imps[i] for i in range(len(feats))})
+        fig = pd.Series(imps, index=feats).sort_values().plot(kind='barh', title="Feature Importances")
+        st.plotly_chart(fig)
 
-if __name__=="__main__":
+    # Data Exploration Tab
+    tab1, tab2 = st.tabs(["Prediction","Data Exploration"])
+    with tab2:
+        st.subheader("Feature Distributions")
+        feature = st.selectbox("Select feature to explore", feats)
+        hist_data = [df[df['Potability']==1][feature], df[df['Potability']==0][feature]]
+        labels = ['Safe','Unsafe']
+        fig2 = st.session_state.get('hist_plot', None)
+        fig2 = pd.DataFrame({ 'Safe':hist_data[0], 'Unsafe':hist_data[1]}).plot(kind='hist', alpha=0.5, bins=30)
+        st.plotly_chart(fig2)
+
+if __name__ == "__main__":
     main()
