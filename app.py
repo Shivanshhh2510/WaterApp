@@ -1,70 +1,74 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
+
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from imblearn.over_sampling import SMOTE
+
+@st.cache_data
+def load_data():
+    return pd.read_csv('water_potability.csv')
+
+@st.cache_resource
+def train_model(df):
+    # 1) Impute
+    imputer = SimpleImputer(strategy='median')
+    X = df.drop('Potability', axis=1)
+    X_imp = pd.DataFrame(imputer.fit_transform(X), columns=X.columns)
+
+    # 2) Log-transform skewed features
+    skewed = ['Solids','Sulfate','Trihalomethanes']
+    for c in skewed:
+        X_imp[c] = np.log1p(X_imp[c])
+
+    # 3) Scale
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_imp)
+
+    # 4) SMOTE
+    sm = SMOTE(random_state=42)
+    X_bal, y_bal = sm.fit_resample(X_scaled, df['Potability'])
+
+    # 5) Random Forest
+    rf = RandomForestClassifier(n_estimators=50, max_depth=5, random_state=42)
+    rf.fit(X_bal, y_bal)
+
+    return imputer, scaler, skewed, rf
 
 def main():
-    # —— 1) Load your saved preprocessing + model objects ——
-    imputer     = joblib.load('imputer.joblib')
-    skewed_cols = joblib.load('skewed_cols.joblib')
-    scaler      = joblib.load('scaler.joblib')
-    rf_model    = joblib.load('rf_model.joblib')
-
-    # —— 2) Load raw CSV to get slider ranges & order ——
-    df_raw   = pd.read_csv('water_potability.csv')
-    features = df_raw.columns.drop('Potability')
-    defaults = df_raw.median()
-    mins     = df_raw.min()
-    maxs     = df_raw.max()
-
-    # —— 3) Streamlit page setup ——
-    st.set_page_config(page_title="💧 Water Potability Predictor", layout="centered")
+    st.set_page_config(page_title="💧 Water Potability Predictor")
     st.title("💧 Water Potability Predictor")
-    st.write("Adjust the water-quality metrics below, then click **Predict Potability**.")
 
-    # —— 4) Build sliders for each feature ——
+    df = load_data()
+    feats = df.columns.drop('Potability')
+    mins, maxs, defaults = df.min(), df.max(), df.median()
+
+    imputer, scaler, skewed, model = train_model(df)
+
     user_vals = {}
-    for feat in features:
-        user_vals[feat] = st.number_input(
-            label=feat.replace('_',' ').title(),
-            min_value=float(mins[feat]),
-            max_value=float(maxs[feat]),
-            value=float(defaults[feat]),
-            format="%.2f"
+    for f in feats:
+        user_vals[f] = st.number_input(
+            f.replace('_',' ').title(),
+            float(mins[f]), float(maxs[f]), float(defaults[f]),
+            step=(maxs[f]-mins[f])/100
         )
 
-    # —— 5) Run inference when button clicked ——
     if st.button("Predict Potability"):
-        # a) Create a one-row DataFrame
-        input_df = pd.DataFrame([user_vals])
+        inp = pd.DataFrame([user_vals])
+        inp_imp = pd.DataFrame(imputer.transform(inp), columns=feats)
+        for c in skewed:
+            inp_imp[c] = np.log1p(inp_imp[c])
+        inp_scaled = scaler.transform(inp_imp)
 
-        # b) Impute missing values
-        input_imp = pd.DataFrame(
-            imputer.transform(input_df),
-            columns=features
-        )
+        proba = model.predict_proba(inp_scaled)[0,1]
+        verdict = "SAFE 💚" if proba>=0.5 else "UNSAFE 🚩"
+        st.markdown(f"## **{verdict}** (Prob: {proba:.1%})")
 
-        # c) Log-transform the skewed columns
-        for c in skewed_cols:
-            input_imp[c] = np.log1p(input_imp[c])
-
-        # d) Scale all features
-        input_scaled = scaler.transform(input_imp)
-
-        # e) Predict probability of “safe” water
-        proba_safe = rf_model.predict_proba(input_scaled)[0,1]
-        verdict   = "SAFE 💚" if proba_safe >= 0.5 else "UNSAFE 🚩"
-
-        # f) Display the verdict
-        st.markdown(f"## **{verdict}**  (Probability: {proba_safe:.1%})")
-
-        # g) Show feature importances
         st.subheader("Feature Importances")
-        imps = pd.Series(
-            rf_model.feature_importances_,
-            index=features
-        ).sort_values(ascending=False)
+        imps = pd.Series(model.feature_importances_, index=feats).sort_values(ascending=False)
         st.bar_chart(imps)
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
