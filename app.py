@@ -200,15 +200,22 @@ def main():
     st.subheader("📂 Upload CSV for Batch Prediction")
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
     if uploaded_file is not None:
-        raw = np.genfromtxt(uploaded_file, delimiter=",", skip_header=1)
-        if raw.ndim == 1:
-            raw = raw.reshape(1, -1)
-        raw[:, sk_idx] = np.log1p(raw[:, sk_idx])
-        raw_scaled = (raw - mu) / sig
-        probs = model.predict_proba(raw_scaled)
-        for i, p in enumerate(probs):
-            label = "SAFE 💚" if p >= 0.5 else "UNSAFE 🚩"
-            st.write(f"Sample {i+1}: **{label}** ({p*100:.1f}% safe)")
+        import pandas as pd
+        try:
+            df = pd.read_csv(uploaded_file)
+            if list(df.columns) != feats:
+                st.error("❌ Uploaded CSV must have the following columns exactly in this order:")
+                st.code(", ".join(feats))
+            else:
+                raw = df.values.astype(float)
+                raw[:, sk_idx] = np.log1p(raw[:, sk_idx])
+                raw_scaled = (raw - mu) / sig
+                probs = model.predict_proba(raw_scaled)
+                for i, p in enumerate(probs):
+                    label = "SAFE 💚" if p >= 0.5 else "UNSAFE 🚩"
+                    st.write(f"Sample {i+1}: **{label}** ({p*100:.1f}% safe)")
+        except Exception as e:
+            st.error(f"❌ Error reading file: {e}")
 
     sample_csv = "ph,Hardness,Solids,Chloramines,Sulfate,Conductivity,Organic_carbon,Trihalomethanes\n7,150,15000,7,300,400,10,80"
     st.download_button("📄 Download Sample CSV", sample_csv, file_name="sample_template.csv", mime="text/csv")
