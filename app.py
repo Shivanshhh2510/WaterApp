@@ -3,12 +3,6 @@ import csv
 import numpy as np
 import random
 
-try:
-    from reportlab.pdfgen import canvas
-    PDF_AVAILABLE = True
-except ImportError:
-    PDF_AVAILABLE = False
-
 # —— 1) Logistic Regression (NumPy) ——
 class LogisticRegressionND:
     def __init__(self, lr=0.1, n_iters=1000):
@@ -93,21 +87,30 @@ def suggest_improvements(user_vals, low_safe, hi_safe, feats):
             suggestions.append(f"⬇️ Decrease **{feats[i]}** to ≤ {hi_safe[i]:.2f}")
     return suggestions
 
-# —— 7) PDF Generator ——
-def generate_pdf(verdict, prob):
-    from io import BytesIO
-    buf = BytesIO()
-    c = canvas.Canvas(buf)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(100, 750, "Water Potability Prediction Report")
-    c.setFont("Helvetica", 12)
-    c.drawString(100, 700, f"Verdict: {verdict}")
-    c.drawString(100, 680, f"Probability of being safe: {prob*100:.2f}%")
-    c.save()
-    buf.seek(0)
-    return buf
+# —— 7) Feature Definitions ——
+def feature_explanations():
+    return {
+        "ph": "Indicates how acidic or basic water is.",
+        "Hardness": "Amount of dissolved calcium and magnesium.",
+        "Solids": "Total dissolved solids in water.",
+        "Chloramines": "Disinfectant added to water.",
+        "Sulfate": "Occurs naturally in minerals.",
+        "Conductivity": "Water’s ability to carry electricity.",
+        "Organic_carbon": "Amount of organic molecules.",
+        "Trihalomethanes": "Byproduct of disinfection."
+    }
 
-# —— 8) App UI ——
+# —— 8) Quiz ——
+def get_quiz():
+    quiz = [
+        ("What is the ideal pH for drinking water?", "6.5 to 8.5"),
+        ("Which element can cause water hardness?", "Calcium & Magnesium"),
+        ("Why is chloramine added?", "To disinfect water"),
+        ("Which ion increases conductivity?", "Sodium"),
+    ]
+    return random.choice(quiz)
+
+# —— 9) App UI ——
 def main():
     st.set_page_config(page_title='💧 Water Potability Predictor', layout='wide')
     st.title('💧 Water Potability Predictor')
@@ -121,10 +124,8 @@ def main():
     presets_col1, presets_col2 = st.sidebar.columns(2)
 
     placeholder_vals = med.copy()
-
     if presets_col1.button("💧 Tap-water"):
         placeholder_vals = med.copy()
-
     if presets_col2.button("🎲 Random Safe"):
         safe_sample = X[y == 1][np.random.randint(sum(y == 1))]
         placeholder_vals = safe_sample.copy()
@@ -143,8 +144,13 @@ def main():
         )
         user_vals.append(val)
 
+    # Sidebar fact + quiz
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"🧠 **Did You Know?**\n\n{get_random_fact()}")
+    q, a = get_quiz()
+    st.sidebar.markdown(f"**Quiz:** {q}")
+    with st.sidebar.expander("🔍 Reveal Answer"):
+        st.write(a)
 
     if st.sidebar.button("🚀 Predict Potability"):
         inp = np.array([user_vals])
@@ -159,11 +165,24 @@ def main():
         st.metric("Prediction", verdict, f"{prob*100:.1f}% safe")
         st.progress(int(prob * 100))
 
+        if prob >= 0.8:
+            st.success("🟢 Excellent! Very likely potable.")
+        elif prob >= 0.5:
+            st.info("🟡 Moderate: Likely safe but not ideal.")
+        else:
+            st.error("🔴 Unsafe: Needs improvement.")
+
         st.subheader("📊 Feature Importances")
         imps = np.abs(model.weights)
         st.bar_chart({feats[i]: imps[i] for i in range(len(feats))})
 
-        st.subheader("📥 Download Prediction")
+        # Top 3 features
+        st.subheader("🔥 Top Influential Features")
+        top_feats = np.argsort(imps)[-3:][::-1]
+        for i in top_feats:
+            st.markdown(f"- **{feats[i]}** — weight: {model.weights[i]:+.2f}")
+
+        st.subheader("📅 Download Prediction")
         st.download_button(
             label="⬇️ Download as Text",
             file_name="prediction.txt",
@@ -171,22 +190,13 @@ def main():
             data=f"Prediction: {verdict}\nProbability: {prob*100:.2f}%"
         )
 
-        if PDF_AVAILABLE:
-            pdf = generate_pdf(verdict, prob)
-            st.download_button(
-                label="⬇️ Download as PDF",
-                file_name="report.pdf",
-                mime="application/pdf",
-                data=pdf
-            )
-
         if verdict == "UNSAFE 🚩":
             st.warning("💡 Suggestions to Improve Potability")
             suggestions = suggest_improvements(user_vals, low_safe, hi_safe, feats)
             for s in suggestions:
                 st.markdown(f"- {s}")
 
-    # —— CSV Prediction ——
+    # CSV batch prediction
     st.markdown("---")
     st.subheader("📂 Upload CSV for Batch Prediction")
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
@@ -200,6 +210,16 @@ def main():
         for i, p in enumerate(probs):
             label = "SAFE 💚" if p >= 0.5 else "UNSAFE 🚩"
             st.write(f"Sample {i+1}: **{label}** ({p*100:.1f}% safe)")
+
+    # Sample CSV download
+    sample_csv = "ph,Hardness,Solids,Chloramines,Sulfate,Conductivity,Organic_carbon,Trihalomethanes\n7,150,15000,7,300,400,10,80"
+    st.download_button("📄 Download Sample CSV", sample_csv, file_name="sample_template.csv", mime="text/csv")
+
+    # Feature explanations
+    with st.expander("📚 Learn About Water Quality Features"):
+        desc = feature_explanations()
+        for k, v in desc.items():
+            st.markdown(f"- **{k}**: {v}")
 
 if __name__ == '__main__':
     main()
