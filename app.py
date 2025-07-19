@@ -58,7 +58,7 @@ def train_model(X, y):
 
     model = LogisticRegressionND()
     model.fit(Xb, yb)
-    return med, mu, sigma, skew_idx, model
+    return med, mu, sigma, skew_idx, model, Xs, yb
 
 # —— 4) Safe Range Reference ——
 @st.cache_data
@@ -116,7 +116,7 @@ def main():
     st.title('💧 Water Potability Predictor')
 
     X, y, feats = load_data()
-    med, mu, sig, sk_idx, model = train_model(X.copy(), y)
+    med, mu, sig, sk_idx, model, Xs, yb = train_model(X.copy(), y)
     low_safe, hi_safe = safe_ranges(X, y)
     mins, maxs = np.nanmin(X, 0), np.nanmax(X, 0)
 
@@ -127,8 +127,9 @@ def main():
     if presets_col1.button("💧 Tap-water"):
         placeholder_vals = med.copy()
     if presets_col2.button("🎲 Random Safe"):
-        safe_sample = X[y == 1][np.random.randint(sum(y == 1))]
-        safe_sample[np.isnan(safe_sample)] = np.take(med, np.where(np.isnan(safe_sample))[0])
+        safe_X = X[y == 1]
+        safe_sample = safe_X[np.random.randint(len(safe_X))].copy()
+        safe_sample[np.isnan(safe_sample)] = med[np.isnan(safe_sample)]
         placeholder_vals = safe_sample
 
     user_vals = []
