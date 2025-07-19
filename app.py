@@ -58,7 +58,7 @@ def train_model(X, y):
 
     model = LogisticRegressionND()
     model.fit(Xb, yb)
-    return med, mu, sigma, skew_idx, model, Xs, yb
+    return med, mu, sigma, skew_idx, model
 
 # —— 4) Safe Range Reference ——
 @st.cache_data
@@ -97,7 +97,8 @@ def feature_explanations():
         "Sulfate": "Occurs naturally in minerals.",
         "Conductivity": "Water’s ability to carry electricity.",
         "Organic_carbon": "Amount of organic molecules.",
-        "Trihalomethanes": "Byproduct of disinfection."
+        "Trihalomethanes": "Byproduct of disinfection.",
+        "Turbidity": "Clarity of the water."
     }
 
 # —— 8) Quiz ——
@@ -116,7 +117,7 @@ def main():
     st.title('💧 Water Potability Predictor')
 
     X, y, feats = load_data()
-    med, mu, sig, sk_idx, model, Xs, yb = train_model(X.copy(), y)
+    med, mu, sig, sk_idx, model = train_model(X.copy(), y)
     low_safe, hi_safe = safe_ranges(X, y)
     mins, maxs = np.nanmin(X, 0), np.nanmax(X, 0)
 
@@ -127,9 +128,8 @@ def main():
     if presets_col1.button("💧 Tap-water"):
         placeholder_vals = med.copy()
     if presets_col2.button("🎲 Random Safe"):
-        safe_X = X[y == 1]
-        safe_sample = safe_X[np.random.randint(len(safe_X))].copy()
-        safe_sample[np.isnan(safe_sample)] = med[np.isnan(safe_sample)]
+        safe_sample = X[y == 1][np.random.randint(sum(y == 1))]
+        safe_sample[np.isnan(safe_sample)] = np.take(med, np.where(np.isnan(safe_sample))[0])
         placeholder_vals = safe_sample
 
     user_vals = []
@@ -190,35 +190,13 @@ def main():
             data=f"Prediction: {verdict}\nProbability: {prob*100:.2f}%"
         )
 
-        if verdict == "UNSAFE 🚩":
+        suggestions = suggest_improvements(user_vals, low_safe, hi_safe, feats)
+        if verdict == "UNSAFE 🚩" and suggestions:
             st.warning("💡 Suggestions to Improve Potability")
-            suggestions = suggest_improvements(user_vals, low_safe, hi_safe, feats)
             for s in suggestions:
                 st.markdown(f"- {s}")
-
-    st.markdown("---")
-    st.subheader("📂 Upload CSV for Batch Prediction")
-    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-    if uploaded_file is not None:
-        import pandas as pd
-        try:
-            df = pd.read_csv(uploaded_file)
-            if list(df.columns) != feats:
-                st.error("❌ Uploaded CSV must have the following columns exactly in this order:")
-                st.code(", ".join(feats))
-            else:
-                raw = df.values.astype(float)
-                raw[:, sk_idx] = np.log1p(raw[:, sk_idx])
-                raw_scaled = (raw - mu) / sig
-                probs = model.predict_proba(raw_scaled)
-                for i, p in enumerate(probs):
-                    label = "SAFE 💚" if p >= 0.5 else "UNSAFE 🚩"
-                    st.write(f"Sample {i+1}: **{label}** ({p*100:.1f}% safe)")
-        except Exception as e:
-            st.error(f"❌ Error reading file: {e}")
-
-    sample_csv = "ph,Hardness,Solids,Chloramines,Sulfate,Conductivity,Organic_carbon,Trihalomethanes\n7,150,15000,7,300,400,10,80"
-    st.download_button("📄 Download Sample CSV", sample_csv, file_name="sample_template.csv", mime="text/csv")
+        elif verdict == "UNSAFE 🚩" and not suggestions:
+            st.info("⚠️ All features are within safe ranges. Consider external factors.")
 
     with st.expander("📚 Learn About Water Quality Features"):
         desc = feature_explanations()
