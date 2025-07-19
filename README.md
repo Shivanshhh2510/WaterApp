@@ -18,7 +18,7 @@ This Streamlit-based web application predicts whether a given sample of water is
 - 💡 **Actionable Suggestions**  
   If the sample is unsafe, the app suggests how to improve it (e.g., increase pH, reduce solids).
 
-- 📚 **Educational Add-ons**
+- 📚 **Educational Add-ons**  
   - Random water facts  
   - Quick water quiz  
   - Feature explanations
@@ -27,7 +27,16 @@ This Streamlit-based web application predicts whether a given sample of water is
 
 ## 🔧 How to Run the App Locally
 
-### 1. Clone the Repository
 ```bash
+1. Clone the Repository
 git clone https://github.com/your-username/water-potability-predictor.git
 cd water-potability-predictor
+
+2. Install Dependencies
+pip install -r requirements.txt
+
+⚠️ If you face issues related to pandas or heavy dependencies, install just the essentials:
+pip install streamlit numpy
+
+3. Run the Streamlit App
+streamlit run app.py
