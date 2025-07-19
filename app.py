@@ -1,20 +1,7 @@
 import streamlit as st
-import streamlit_lottie as st_lottie
-import requests
 import csv
 import numpy as np
 import random
-
-# —— 0) Lottie Loader ——
-@st.cache_data(show_spinner=False)
-def load_lottieurl(url: str):
-    try:
-        r = requests.get(url)
-        if r.status_code != 200:
-            return {}
-        return r.json()
-    except:
-        return {}
 
 # —— 1) Logistic Regression (NumPy) ——
 class LogisticRegressionND:
@@ -128,11 +115,6 @@ def get_quiz():
 def main():
     st.set_page_config(page_title='💧 Water Potability Predictor', layout='wide')
     st.title('💧 Water Potability Predictor')
-
-    lottie_url = "https://lottie.host/275dc4e1-ea4a-4a6d-9cb0-30df14c18fbb/M62Blg9WaW.json"
-    lottie_json = load_lottieurl(lottie_url)
-    if lottie_json:
-        st_lottie.st_lottie(lottie_json, height=200)
 
     X, y, feats = load_data()
     med, mu, sig, sk_idx, model = train_model(X.copy(), y)
