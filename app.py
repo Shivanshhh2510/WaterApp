@@ -1,6 +1,30 @@
 import streamlit as st
 import csv
 import numpy as np
+import random
+
+# Educational facts about water
+water_facts = [
+    "💧 The human body is about 60% water.",
+    "🚰 It’s recommended to drink 8 glasses of water a day.",
+    "🌍 About 71% of the Earth’s surface is covered in water.",
+    "🔬 Clean water helps prevent many diseases.",
+    "🧪 Chloramines are used in water treatment to disinfect.",
+    "💦 Water with high sulfate may taste bitter.",
+    "📉 Low pH can corrode pipes and cause metal leaching.",
+    "🚱 Unsafe water kills more people every year than war.",
+]
+
+def generate_recommendations(user_vals, low_safe, hi_safe, feats):
+    suggestions = []
+    for i, val in enumerate(user_vals):
+        if val < low_safe[i]:
+            suggestions.append(f"🔺 Increase **{feats[i]}** to improve potability.")
+        elif val > hi_safe[i]:
+            suggestions.append(f"🔻 Decrease **{feats[i]}** to improve potability.")
+        else:
+            suggestions.append(f"✅ {feats[i]} is within a safe range.")
+    return suggestions
 
 # —— 1) Logistic Regression (NumPy) ——
 class LogisticRegressionND:
@@ -47,7 +71,6 @@ def train_model(X, y):
     mu, sigma = X.mean(0), X.std(0)
     Xs = (X - mu) / sigma
 
-    # oversampling
     id0, id1 = np.where(y == 0)[0], np.where(y == 1)[0]
     if len(id1) < len(id0):
         extra = np.random.choice(id1, len(id0) - len(id1), replace=True)
@@ -118,7 +141,14 @@ def main():
         st.metric("Prediction", verdict, f"{prob*100:.1f}% safe")
         st.progress(int(prob * 100))
 
-        st.subheader("Feature Importances (|weights|)")
+        st.subheader("🧠 Suggestions to Improve Potability")
+        for tip in generate_recommendations(user_vals, low_safe, hi_safe, feats):
+            st.markdown(tip)
+
+        st.subheader("📘 Random Water Fact")
+        st.info(random.choice(water_facts))
+
+        st.subheader("📊 Feature Importances (|weights|)")
         imps = np.abs(model.weights)
         st.bar_chart({feats[i]: imps[i] for i in range(len(feats))})
 
@@ -137,4 +167,4 @@ def main():
             )
 
 if __name__ == '__main__':
-    main() 
+    main()
