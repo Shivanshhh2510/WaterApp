@@ -128,7 +128,8 @@ def main():
         placeholder_vals = med.copy()
     if presets_col2.button("🎲 Random Safe"):
         safe_sample = X[y == 1][np.random.randint(sum(y == 1))]
-        placeholder_vals = safe_sample.copy()
+        safe_sample[np.isnan(safe_sample)] = np.take(med, np.where(np.isnan(safe_sample))[0])
+        placeholder_vals = safe_sample
 
     user_vals = []
     for i, f in enumerate(feats):
@@ -144,7 +145,6 @@ def main():
         )
         user_vals.append(val)
 
-    # Sidebar fact + quiz
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"🧠 **Did You Know?**\n\n{get_random_fact()}")
     q, a = get_quiz()
@@ -176,7 +176,6 @@ def main():
         imps = np.abs(model.weights)
         st.bar_chart({feats[i]: imps[i] for i in range(len(feats))})
 
-        # Top 3 features
         st.subheader("🔥 Top Influential Features")
         top_feats = np.argsort(imps)[-3:][::-1]
         for i in top_feats:
@@ -196,7 +195,6 @@ def main():
             for s in suggestions:
                 st.markdown(f"- {s}")
 
-    # CSV batch prediction
     st.markdown("---")
     st.subheader("📂 Upload CSV for Batch Prediction")
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
@@ -211,11 +209,9 @@ def main():
             label = "SAFE 💚" if p >= 0.5 else "UNSAFE 🚩"
             st.write(f"Sample {i+1}: **{label}** ({p*100:.1f}% safe)")
 
-    # Sample CSV download
     sample_csv = "ph,Hardness,Solids,Chloramines,Sulfate,Conductivity,Organic_carbon,Trihalomethanes\n7,150,15000,7,300,400,10,80"
     st.download_button("📄 Download Sample CSV", sample_csv, file_name="sample_template.csv", mime="text/csv")
 
-    # Feature explanations
     with st.expander("📚 Learn About Water Quality Features"):
         desc = feature_explanations()
         for k, v in desc.items():
