@@ -3,29 +3,6 @@ import csv
 import numpy as np
 import random
 
-# Educational facts about water
-water_facts = [
-    "💧 The human body is about 60% water.",
-    "🚰 It’s recommended to drink 8 glasses of water a day.",
-    "🌍 About 71% of the Earth’s surface is covered in water.",
-    "🔬 Clean water helps prevent many diseases.",
-    "🧪 Chloramines are used in water treatment to disinfect.",
-    "💦 Water with high sulfate may taste bitter.",
-    "📉 Low pH can corrode pipes and cause metal leaching.",
-    "🚱 Unsafe water kills more people every year than war.",
-]
-
-def generate_recommendations(user_vals, low_safe, hi_safe, feats):
-    suggestions = []
-    for i, val in enumerate(user_vals):
-        if val < low_safe[i]:
-            suggestions.append(f"🔺 Increase **{feats[i]}** to improve potability.")
-        elif val > hi_safe[i]:
-            suggestions.append(f"🔻 Decrease **{feats[i]}** to improve potability.")
-        else:
-            suggestions.append(f"✅ {feats[i]} is within a safe range.")
-    return suggestions
-
 # —— 1) Logistic Regression (NumPy) ——
 class LogisticRegressionND:
     def __init__(self, lr=0.1, n_iters=1000):
@@ -89,7 +66,28 @@ def safe_ranges(X, y):
     safe = X[y == 1]
     return np.nanpercentile(safe, 5, 0), np.nanpercentile(safe, 95, 0)
 
-# —— 5) App UI & Inference ——
+# —— 5) Random Facts ——
+def get_random_fact():
+    facts = [
+        "💧 Only 1% of Earth's water is drinkable.",
+        "💦 Boiling kills most bacteria in water.",
+        "🚱 High sulfate levels can cause a bitter taste.",
+        "🧪 Chloramines disinfect water, but excess isn't healthy.",
+        "🌍 pH between 6.5 and 8.5 is ideal for drinking water."
+    ]
+    return random.choice(facts)
+
+# —— 6) Suggest Improvement ——
+def suggest_improvements(user_vals, low_safe, hi_safe, feats):
+    suggestions = []
+    for i, val in enumerate(user_vals):
+        if val < low_safe[i]:
+            suggestions.append(f"⬆️ Increase **{feats[i]}** to at least {low_safe[i]:.2f}")
+        elif val > hi_safe[i]:
+            suggestions.append(f"⬇️ Decrease **{feats[i]}** to below {hi_safe[i]:.2f}")
+    return suggestions
+
+# —— 7) App UI ——
 def main():
     st.set_page_config(page_title='💧 Water Potability Predictor', layout='wide')
     st.title('💧 Water Potability Predictor')
@@ -126,6 +124,8 @@ def main():
         user_vals.append(val)
 
     st.sidebar.markdown("---")
+    st.sidebar.markdown(f"🧠 **Did You Know?**\n\n{get_random_fact()}")
+
     predict = st.sidebar.button("🚀 Predict Potability")
 
     if predict:
@@ -141,22 +141,9 @@ def main():
         st.metric("Prediction", verdict, f"{prob*100:.1f}% safe")
         st.progress(int(prob * 100))
 
-        st.subheader("🧠 Suggestions to Improve Potability")
-        for tip in generate_recommendations(user_vals, low_safe, hi_safe, feats):
-            st.markdown(tip)
-
-        st.subheader("📘 Random Water Fact")
-        st.info(random.choice(water_facts))
-
         st.subheader("📊 Feature Importances (|weights|)")
         imps = np.abs(model.weights)
         st.bar_chart({feats[i]: imps[i] for i in range(len(feats))})
-
-        with st.expander("📊 Raw Weight Breakdown"):
-            st.write('\n'.join([
-                f"{feats[i]}: {model.weights[i]:+.4f}"
-                for i in np.argsort(-imps)
-            ]))
 
         with st.expander("📥 Download Prediction"):
             st.download_button(
@@ -165,6 +152,27 @@ def main():
                 mime="text/plain",
                 data=f"Prediction: {verdict}\nProbability: {prob*100:.2f}%"
             )
+
+        if verdict == "UNSAFE 🚩":
+            st.warning("💡 Suggestions to Improve Potability")
+            suggestions = suggest_improvements(user_vals, low_safe, hi_safe, feats)
+            for s in suggestions:
+                st.markdown(f"- {s}")
+
+    # —— 8) CSV Batch Prediction ——
+    st.markdown("---")
+    st.subheader("📂 Upload CSV for Batch Prediction")
+    uploaded_file = st.file_uploader("Choose a CSV file (same structure as water_potability.csv)", type="csv")
+    if uploaded_file is not None:
+        raw = np.genfromtxt(uploaded_file, delimiter=",", skip_header=1)
+        if raw.ndim == 1:
+            raw = raw.reshape(1, -1)
+        raw[:, sk_idx] = np.log1p(raw[:, sk_idx])
+        raw_scaled = (raw - mu) / sig
+        probs = model.predict_proba(raw_scaled)
+        for i, p in enumerate(probs):
+            label = "SAFE 💚" if p >= 0.5 else "UNSAFE 🚩"
+            st.write(f"Sample {i+1}: **{label}** ({p*100:.1f}% safe)")
 
 if __name__ == '__main__':
     main()
