@@ -1,6 +1,8 @@
 import streamlit as st
 import csv
 import numpy as np
+import io
+from datetime import datetime
 
 # —— 1) Logistic Regression (NumPy) ——
 class LogisticRegressionND:
@@ -46,8 +48,6 @@ def train_model(X, y):
     X[:, skew_idx] = np.log1p(X[:, skew_idx])
     mu, sigma = X.mean(0), X.std(0)
     Xs = (X - mu) / sigma
-
-    # oversampling
     id0, id1 = np.where(y == 0)[0], np.where(y == 1)[0]
     if len(id1) < len(id0):
         extra = np.random.choice(id1, len(id0) - len(id1), replace=True)
@@ -55,7 +55,6 @@ def train_model(X, y):
         extra = np.random.choice(id0, len(id1) - len(id0), replace=True)
     Xb = np.vstack([Xs, Xs[extra]])
     yb = np.concatenate([y, y[extra]])
-
     model = LogisticRegressionND()
     model.fit(Xb, yb)
     return med, mu, sigma, skew_idx, model
@@ -71,6 +70,10 @@ def main():
     st.set_page_config(page_title='💧 Water Potability Predictor', layout='wide')
     st.title('💧 Water Potability Predictor')
 
+    theme_toggle = st.sidebar.toggle("🌗 Toggle Dark/Light Mode")
+    if theme_toggle:
+        st.markdown('<style>body{background-color: #fff; color: #000;}</style>', unsafe_allow_html=True)
+
     X, y, feats = load_data()
     med, mu, sig, sk_idx, model = train_model(X.copy(), y)
     low_safe, hi_safe = safe_ranges(X, y)
@@ -80,10 +83,8 @@ def main():
     presets_col1, presets_col2 = st.sidebar.columns(2)
 
     placeholder_vals = med.copy()
-
     if presets_col1.button("💧 Tap-water"):
         placeholder_vals = med.copy()
-
     if presets_col2.button("🎲 Random Safe"):
         safe_sample = X[y == 1][np.random.randint(sum(y == 1))]
         placeholder_vals = safe_sample.copy()
@@ -118,7 +119,7 @@ def main():
         st.metric("Prediction", verdict, f"{prob*100:.1f}% safe")
         st.progress(int(prob * 100))
 
-        st.subheader("Feature Importances (|weights|)")
+        st.subheader("🧪 Feature Importances (|weights|)")
         imps = np.abs(model.weights)
         st.bar_chart({feats[i]: imps[i] for i in range(len(feats))})
 
@@ -128,13 +129,28 @@ def main():
                 for i in np.argsort(-imps)
             ]))
 
+        with st.expander("💡 Water Quality Summary"):
+            for i, f in enumerate(feats):
+                status = "✅ Safe" if low_safe[i] <= user_vals[i] <= hi_safe[i] else "⚠️ Out of Range"
+                color = "green" if status == "✅ Safe" else "red"
+                st.markdown(f"<span style='color:{color}'>{f}: {user_vals[i]:.2f} ({status})</span>", unsafe_allow_html=True)
+
+        with st.expander("📈 Feature Sensitivity Recommendations"):
+            st.markdown("To improve potability, consider reducing high Sulfate and Chloramines levels.")
+
         with st.expander("📥 Download Prediction"):
-            st.download_button(
-                label="Download Result as Text",
-                file_name="prediction.txt",
-                mime="text/plain",
-                data=f"Prediction: {verdict}\nProbability: {prob*100:.2f}%"
-            )
+            output = io.StringIO()
+            output.write(f"Water Potability Report\n")
+            output.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            for i, f in enumerate(feats):
+                output.write(f"{f}: {user_vals[i]:.2f}\n")
+            output.write(f"\nPrediction: {verdict}\n")
+            output.write(f"Probability: {prob*100:.2f}%\n")
+            output.write("\nFeature Importances:\n")
+            for i in np.argsort(-imps):
+                output.write(f"{feats[i]}: {model.weights[i]:+.4f}\n")
+
+            st.download_button("Download as TXT", data=output.getvalue(), file_name="potability_report.txt")
 
 if __name__ == '__main__':
     main()
