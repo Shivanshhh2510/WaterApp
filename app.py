@@ -3,6 +3,12 @@ import csv
 import numpy as np
 import random
 
+try:
+    from reportlab.pdfgen import canvas
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
 # —— 1) Logistic Regression (NumPy) ——
 class LogisticRegressionND:
     def __init__(self, lr=0.1, n_iters=1000):
@@ -27,7 +33,7 @@ class LogisticRegressionND:
     def predict_proba(self, X):
         return self.sigmoid(X.dot(self.weights) + self.bias)
 
-# —— 2) Load CSV Data ——
+# —— 2) Load Data ——
 @st.cache_data(show_spinner=False)
 def load_data():
     with open('water_potability.csv', newline='') as f:
@@ -77,17 +83,31 @@ def get_random_fact():
     ]
     return random.choice(facts)
 
-# —— 6) Suggest Improvement ——
+# —— 6) Suggestions ——
 def suggest_improvements(user_vals, low_safe, hi_safe, feats):
     suggestions = []
     for i, val in enumerate(user_vals):
         if val < low_safe[i]:
-            suggestions.append(f"⬆️ Increase **{feats[i]}** to at least {low_safe[i]:.2f}")
+            suggestions.append(f"⬆️ Increase **{feats[i]}** to ≥ {low_safe[i]:.2f}")
         elif val > hi_safe[i]:
-            suggestions.append(f"⬇️ Decrease **{feats[i]}** to below {hi_safe[i]:.2f}")
+            suggestions.append(f"⬇️ Decrease **{feats[i]}** to ≤ {hi_safe[i]:.2f}")
     return suggestions
 
-# —— 7) App UI ——
+# —— 7) PDF Generator ——
+def generate_pdf(verdict, prob):
+    from io import BytesIO
+    buf = BytesIO()
+    c = canvas.Canvas(buf)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(100, 750, "Water Potability Prediction Report")
+    c.setFont("Helvetica", 12)
+    c.drawString(100, 700, f"Verdict: {verdict}")
+    c.drawString(100, 680, f"Probability of being safe: {prob*100:.2f}%")
+    c.save()
+    buf.seek(0)
+    return buf
+
+# —— 8) App UI ——
 def main():
     st.set_page_config(page_title='💧 Water Potability Predictor', layout='wide')
     st.title('💧 Water Potability Predictor')
@@ -126,9 +146,7 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"🧠 **Did You Know?**\n\n{get_random_fact()}")
 
-    predict = st.sidebar.button("🚀 Predict Potability")
-
-    if predict:
+    if st.sidebar.button("🚀 Predict Potability"):
         inp = np.array([user_vals])
         nan_mask = np.isnan(inp)
         if nan_mask.any():
@@ -141,16 +159,25 @@ def main():
         st.metric("Prediction", verdict, f"{prob*100:.1f}% safe")
         st.progress(int(prob * 100))
 
-        st.subheader("📊 Feature Importances (|weights|)")
+        st.subheader("📊 Feature Importances")
         imps = np.abs(model.weights)
         st.bar_chart({feats[i]: imps[i] for i in range(len(feats))})
 
-        with st.expander("📥 Download Prediction"):
+        st.subheader("📥 Download Prediction")
+        st.download_button(
+            label="⬇️ Download as Text",
+            file_name="prediction.txt",
+            mime="text/plain",
+            data=f"Prediction: {verdict}\nProbability: {prob*100:.2f}%"
+        )
+
+        if PDF_AVAILABLE:
+            pdf = generate_pdf(verdict, prob)
             st.download_button(
-                label="Download Result as Text",
-                file_name="prediction.txt",
-                mime="text/plain",
-                data=f"Prediction: {verdict}\nProbability: {prob*100:.2f}%"
+                label="⬇️ Download as PDF",
+                file_name="report.pdf",
+                mime="application/pdf",
+                data=pdf
             )
 
         if verdict == "UNSAFE 🚩":
@@ -159,10 +186,10 @@ def main():
             for s in suggestions:
                 st.markdown(f"- {s}")
 
-    # —— 8) CSV Batch Prediction ——
+    # —— CSV Prediction ——
     st.markdown("---")
     st.subheader("📂 Upload CSV for Batch Prediction")
-    uploaded_file = st.file_uploader("Choose a CSV file (same structure as water_potability.csv)", type="csv")
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
     if uploaded_file is not None:
         raw = np.genfromtxt(uploaded_file, delimiter=",", skip_header=1)
         if raw.ndim == 1:
