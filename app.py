@@ -70,18 +70,19 @@ def main():
     st.set_page_config(page_title='💧 Water Potability Predictor', layout='wide')
     st.title('💧 Water Potability Predictor')
 
-    theme_toggle = st.sidebar.toggle("🌗 Toggle Dark/Light Mode")
-    if theme_toggle:
-        st.markdown('<style>body{background-color: #fff; color: #000;}</style>', unsafe_allow_html=True)
-
     X, y, feats = load_data()
     med, mu, sig, sk_idx, model = train_model(X.copy(), y)
     low_safe, hi_safe = safe_ranges(X, y)
     mins, maxs = np.nanmin(X, 0), np.nanmax(X, 0)
 
     st.sidebar.header("🔧 Adjust Water Quality Features")
-    presets_col1, presets_col2 = st.sidebar.columns(2)
+    st.sidebar.markdown("---")
+    
+    # Did You Know Section
+    with st.sidebar.expander("🧐 Did You Know?"):
+        st.markdown("- 💡 **pH** between 6.5 to 8.5 is ideal for drinking.\n- 🧪 High Sulfates can cause taste issues.\n- 🚱 Chloramines disinfect water but should stay below limits.")
 
+    presets_col1, presets_col2 = st.sidebar.columns(2)
     placeholder_vals = med.copy()
     if presets_col1.button("💧 Tap-water"):
         placeholder_vals = med.copy()
@@ -101,6 +102,8 @@ def main():
             format="%.2f",
             help=help_text
         )
+        if val < 0:
+            st.sidebar.warning(f"⚠️ {f} cannot be negative!")
         user_vals.append(val)
 
     st.sidebar.markdown("---")
@@ -119,7 +122,7 @@ def main():
         st.metric("Prediction", verdict, f"{prob*100:.1f}% safe")
         st.progress(int(prob * 100))
 
-        st.subheader("🧪 Feature Importances (|weights|)")
+        st.subheader("🧚 Feature Importances (|weights|)")
         imps = np.abs(model.weights)
         st.bar_chart({feats[i]: imps[i] for i in range(len(feats))})
 
@@ -138,7 +141,7 @@ def main():
         with st.expander("📈 Feature Sensitivity Recommendations"):
             st.markdown("To improve potability, consider reducing high Sulfate and Chloramines levels.")
 
-        with st.expander("📥 Download Prediction"):
+        with st.expander("📅 Download Prediction"):
             output = io.StringIO()
             output.write(f"Water Potability Report\n")
             output.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
@@ -149,8 +152,22 @@ def main():
             output.write("\nFeature Importances:\n")
             for i in np.argsort(-imps):
                 output.write(f"{feats[i]}: {model.weights[i]:+.4f}\n")
-
             st.download_button("Download as TXT", data=output.getvalue(), file_name="potability_report.txt")
+
+    # Batch prediction via file upload
+    st.markdown("---")
+    st.subheader("📂 Upload CSV for Batch Prediction")
+    uploaded_file = st.file_uploader("Choose a CSV file with water data", type=["csv"])
+    if uploaded_file is not None:
+        df = np.genfromtxt(uploaded_file, delimiter=",", skip_header=1)
+        if df.ndim == 1:
+            df = df.reshape(1, -1)
+        df[:, sk_idx] = np.log1p(df[:, sk_idx])
+        df_scaled = (df - mu) / sig
+        probs = model.predict_proba(df_scaled)
+        for i, p in enumerate(probs):
+            label = "SAFE" if p >= 0.5 else "UNSAFE"
+            st.write(f"Sample {i+1}: {label} ({p*100:.1f}% safe)")
 
 if __name__ == '__main__':
     main()
