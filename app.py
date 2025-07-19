@@ -78,12 +78,10 @@ def main():
 
     st.sidebar.header("🔧 Adjust Water Quality Features")
     presets_col1, presets_col2 = st.sidebar.columns(2)
-
     placeholder_vals = med.copy()
 
     if presets_col1.button("💧 Tap-water"):
         placeholder_vals = med.copy()
-
     if presets_col2.button("🎲 Random Safe"):
         safe_sample = X[y == 1][np.random.randint(sum(y == 1))]
         placeholder_vals = safe_sample.copy()
