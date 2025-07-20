@@ -166,7 +166,7 @@ def main():
         st.metric("Prediction", verdict, f"{prob*100:.1f}% safe")
         st.progress(int(prob * 100))
 
-        if prob >= 0.8:
+        if prob >= 0.75:
             st.success("🟢 Excellent! Very likely potable.")
         elif prob >= 0.5:
             st.info("🟡 Moderate: Likely safe but not ideal.")
